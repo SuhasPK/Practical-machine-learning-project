@@ -1,0 +1,287 @@
+---
+title: "Practical Machine Learning Project"
+date: "`r Sys.Date()`"
+output:
+  rmdformats::downcute:
+    self_contained: true
+    default_style: "dark"
+    downcute_theme: "default"
+---
+
+
+```{r setup, include=FALSE}
+## Global options
+knitr::opts_chunk$set(cache = TRUE)
+```
+## Introduction 
+As part of Johns Hopkins Data science specializtion course, this project comes under Practical Machine Learning course. Purpose of this project is to use appropriate machine learning model for the given data set and predict based of the test data set.
+
+## Project description
+### Background
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: [click here](http://groupware.les.inf.puc-rio.br/har)
+
+### Project goal
+The goal of your project is to predict the manner in which they did the exercise. This is the “classe” variable in the training set. You may use any of the other variables to predict with. You should create a report describing how you built your model, how you used cross validation, what you think the expected out of sample error is, and why you made the choices you did. You will also use your prediction model to predict 20 different test cases.
+
+### Data
+
+- [Training data set](https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv)
+
+- [Test data set](https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv)
+
+- The goal of your project is to predict the manner in which they did the exercise. This is the "classe" variable in the training set. You may use any of the other variables to predict with. You should create a report describing how you built your model, how you used cross validation, what you think the expected out of sample error is, and why you made the choices you did. You will also use your prediction model to predict 20 different test cases. 
+
+## Data Wrangling
+
+### Required Libraries
+
+Apart from the important libraries even though most of them is not used, I have imported them anyways.
+```{r libraries}
+if (!require(tidyr)){
+  install.packages("tidyr")
+  library(tidyr)
+  }
+if (!require(dplyr)){
+  install.packages("dplyr")
+  library(dplyr)
+}
+if (!require(caret)){
+  install.packages("caret")
+  library(caret)
+}
+if (!require(glmnet)){
+  install.packages("glmnet")
+  library(glmnet)
+}
+if (!require(VIM)){
+  install.packages("VIM")
+  library(VIM)
+}
+if (!require(randomForest)){
+  install.packages("randomForest")
+  library(randomForest)
+}
+if (!require(rpart)){
+  install.packages("rpart")
+  library(rpart)
+}
+if (!require(rpart.plot)){
+  install.packages("rpart.plot")
+  library(rpart.plot)
+}
+if (!require(rattle)){
+  install.packages("rattle")
+  library(rattle)
+}
+```
+
+### Required data sets
+
+```{r datasets}
+# download the datasets
+train_url <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+test_url <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+
+train_file <- paste(getwd(),"train_data.csv", sep = "/")
+test_file <- paste(getwd(),"test_data.csv",sep = "/")
+
+if (!file.exists(train_file)){
+  download.file(url=train_url,
+                destfile = train_file)
+}
+
+if (!file.exists(test_file)){
+  download.file(url=test_url,
+                destfile = test_file)
+}
+
+```
+
+### Importing the data sets and reading the .csv files.
+```{r importing data}
+# Importing Data
+
+training <- read.csv("train_data.csv", 
+                     na.strings = c('#DIV/0!','','NA'),
+                     stringsAsFactors = F
+                     )
+testing <- read.csv("test_data.csv",
+                    na.strings = c('#DIV/0!','','NA'),
+                    stringsAsFactors = F
+                    )
+```
+
+### Training data: changing variable class
+```{r training data}
+# training data: change variable class
+training$new_window <- as.factor(training$new_window)
+training$kurtosis_yaw_belt <- as.numeric(training$kurtosis_yaw_belt)
+training$skewness_yaw_belt <- as.numeric(training$skewness_yaw_belt)
+training$kurtosis_yaw_dumbbell <- as.numeric(training$kurtosis_yaw_dumbbell)
+training$skewness_yaw_dumbbell <- as.numeric(training$skewness_yaw_dumbbell)
+training$cvtd_timestamp <- as.factor(training$cvtd_timestamp)
+```
+
+```{r test data}
+# testing data: change variable class
+testing$new_window <- as.factor(testing$new_window)
+testing$kurtosis_yaw_belt <- as.numeric(testing$kurtosis_yaw_belt)
+testing$skewness_yaw_belt <- as.numeric(testing$skewness_yaw_belt)
+testing$kurtosis_yaw_dumbbell <- as.numeric(testing$kurtosis_yaw_dumbbell)
+testing$skewness_yaw_dumbbell <- as.numeric(testing$skewness_yaw_dumbbell)
+testing$cvtd_timestamp <- as.factor(testing$cvtd_timestamp)
+```
+Several skewness and kurtosis variables were coerced from class **factor** to class **numeric**. A timestamp variable was coerced to **factor** based on the observation that stamps were categorical in nature.Class conversion on the training set were replicated on the test set.
+
+## Handling Missing Values
+
+For better understanding visualisation, this approach can be used if there exists any missing values in the data sets.
+
+```{r train missing values}
+# The plot shows several variables with high proportions of missing data, with some variables nearly missing entirely.
+
+aggr(training)
+
+```
+
+To know how much data is missing in the training data set.
+```{r missing data number}
+# How much data is missing?
+sum(is.na(training))/(dim(training)[1]*dim(training)[2])
+```
+
+To understand the missing value by variable,
+```{r histplot}
+# Missing values fraction by column / variable
+missCol <- apply(training, 2, function(x) sum(is.na(x)/length(x)))
+hist(missCol, main = "Missing Data by Variable")
+
+```
+
+To check how many number of predictors are missing,
+```{r missing predictors}
+missIndCol <- which(missCol > 0.9)
+#Number of predictors > 90% missing
+length(missIndCol)
+```
+
+Sixty one percent of the total data are missing. One hundred **variables** had in excess of ninety percent missing data. We removed these latter variables and unneccesary observations such as row nummbers and raw timestamps.
+
+```{r clean data}
+# Remove variables
+## remove missing variables from training and test set
+train_missing_values <- training[, -missIndCol]
+test_missing_values <- testing[,-missIndCol]
+
+## remove raw count variable and raw time stamps
+train_clean <- train_missing_values[,-c(1,3,4)]
+test_clean <- test_missing_values[,-c(1,3,4)]
+
+# The plot shows several variables with high proportions of missing data, with some variables nearly missing entirely.
+aggr(train_clean)
+```
+
+To check if there exists any missing data or NA values,
+```{r check missing value number}
+sum(!complete.cases(train_clean))
+```
+
+## Machine Learing Model
+
+### Decision tree model
+
+- First I will split the **train_clean** data to train data and test data. Even though the terminology is counfusing, let us do it anyways.
+
+```{r preparing data sets for DTM}
+# creating training set and testing test from train_clean data set
+
+in_train <- createDataPartition(
+  train_clean$classe, p = 0.70, 
+  list = FALSE
+)
+
+train_set <- train_clean[in_train,]
+test_set <- train_clean[-in_train,]
+```
+
+Here, I will program a **decesion tree model**,
+```{r DTM}
+set.seed(1967)
+fit_DT <- rpart(classe~., data = train_set, method = "class")
+fancyRpartPlot(fit_DT)
+```
+
+```{r DT prediction}
+predict_DT <- predict(fit_DT, newdata = test_set, type="class")
+conf_matrix_DT <- confusionMatrix(table(predict_DT, test_set$classe))
+conf_matrix_DT
+```
+
+```{r DT visualization}
+plot(conf_matrix_DT$table, col = conf_matrix_DT$byClass, 
+     main = paste("Decision Tree Model: Predictive Accuracy =",
+                  round(conf_matrix_DT$overall['Accuracy'], 4)))
+```
+
+
+
+
+### 10 fold Cross validation Random forest
+For this project **Random forest model** is being used. As part of the project, to get accurate prediction **Random forest under 10 fold cross validation** is used. This does bit of some time, be patient.
+```{r random forest}
+set.seed(1967)
+modFor  <- train(classe~., 
+                 data = train_clean, 
+                 method = "rf", 
+                 trControl = trainControl(method = "cv", number = 10, verboseIter = FALSE), 
+                 na.action = na.pass)
+
+
+modFor
+```
+
+```{r accuracy}
+getTrainPerf(modFor)
+```
+
+```{r prediction accuracy plot}
+plot(modFor, main="RF Model Accuracy by number of predictors" ,cex=4)
+```
+Cross validated accuracy is nearly 100%. Out of sample error is less than 0.2%. I see no reason to seek a better model. I anticipate a reduction in accuracy when the data is applied to our testing obervations.
+
+## Prediction and Visualization
+
+```{r prediction}
+prediction_test <- predict(modFor,
+                           newdata = test_clean)
+
+prediction_test
+```
+
+
+## Conclusion
+Data wrangling and treating missing observation was essential to this analysis. The result of these actions led to a training set of complete cases. No further pre-processing was required. A Random Forest model fit to this training data using default parameters produced 100% accuracy in prediction, a positive result.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
