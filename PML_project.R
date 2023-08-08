@@ -143,4 +143,13 @@ prediction_test <- predict(modFor,
 
 prediction_test
 
+png('randomForest_accuracy.png', width = 640, height = 640, units = 'px')
+plot(modFor, main="RF Model Accuracy by number of predictors" ,cex=4)
+dev.off()
+
+
+
+
+
+
 
